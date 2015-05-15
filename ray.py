@@ -154,19 +154,21 @@ class Scene:
 
         
 
-    def draw(self,w,h,depth):
-        r = float(w) / h
+    def draw(self,w,h,depth,antialias):
+        W = w*antialias
+        H = h*antialias
+        r = float(W) / H
         # Screen coordinates: x0, y0, x1, y1.
         S = (-1., -1. / r + .25, 1., 1. / r + .25)
         color = np.zeros(3)
         Q = np.array([0.,0.,0.])
-        img = np.zeros((h,w,3))
+        IMG = np.zeros((H,W,3))
          
         # Loop through all pixels.
-        for i, x in enumerate(np.linspace(S[0], S[2], w)):
+        for i, x in enumerate(np.linspace(S[0], S[2], W)):
             if i % 10 == 0:
-                print i / float(w) * 100, "%"
-            for j, y in enumerate(np.linspace(S[1], S[3], h)):
+                print i / float(W) * 100, "%"
+            for j, y in enumerate(np.linspace(S[1], S[3], H)):
                 color = np.zeros(3)
                 reflection = 1.
                 Q[:2] = (x, y)
@@ -187,8 +189,16 @@ class Scene:
                     O = P+N*0.0001
                     D = normalize(D - 2*np.dot(D,N)*N)
 
-                img[h - j - 1, i, :] = np.clip(color, 0, 1)
+                IMG[H - j - 1, i, :] = np.clip(color, 0, 1)
          
+        img = np.zeros((h,w,3))
+        for i in range(h):
+            for j in range(w):
+                color = np.zeros(3)
+                for k in range(antialias):
+                    for l in range(antialias):
+                        color += IMG[i*antialias+k,j*antialias+l]
+                img[i,j] = color/(antialias**2)
         return img
 
 if __name__ == '__main__':
@@ -215,5 +225,5 @@ if __name__ == '__main__':
     scene.camera = Camera([0.,0.35,-1.],[0., 0., 0.])
     scene.ambient = 0.05
 
-    img = scene.draw(800,600,4)
+    img = scene.draw(1920,1080,4,3)
     plt.imsave('fig.png', img)
