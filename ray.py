@@ -167,7 +167,7 @@ class Scene:
         # Loop through all pixels.
         for i, x in enumerate(np.linspace(S[0], S[2], W)):
             if i % 10 == 0:
-                print i / float(W) * 100, "%"
+                print(i / float(W) * 100, "%")
             for j, y in enumerate(np.linspace(S[1], S[3], H)):
                 color = np.zeros(3)
                 reflection = 1.
