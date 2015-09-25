@@ -7,6 +7,14 @@ def normalize(x):
     x /= np.linalg.norm(x)
     return x
 
+def cross(x,y):
+    i = x[1]*y[2]-x[2]*y[1]
+    j = x[2]*y[0]-x[0]*y[2]
+    k = x[0]*y[1]-x[1]*y[0]
+    
+    v = np.array([i,j,k])
+
+    return v
 
 class Ray:
     def __init__(self,origin,direction):
@@ -40,20 +48,24 @@ class Sphere:
 
     def get_color(self,point):
         d = normalize(point - self.center)
-        u = 0.5 + math.atan2(d[0],d[2])/(math.pi*2) 
+        u = 0.5 - math.atan2(d[0],d[2])/(math.pi*2) 
         v = 0.5 - math.asin(d[1])/math.pi
         
         return self.texture.get_color(u,v)
 
 class Plane:
-    def __init__(self,point,normal,material,texture):
+    def __init__(self,point,normal,material,texture,texture_x_axis):
         self.point = np.array(point)
         self._normal = normalize(np.array(normal))
         self.material = material
         self.texture = texture
+        self.texture_x_axis = texture_x_axis
+        self.texture_y_axis = cross(self.texture_x_axis,self._normal)
 
     def intersect(self,ray):
         denom = np.dot(ray.direction,self._normal)
+        if denom == 0:
+            return np.inf
 
         d = np.dot(self.point-ray.origin,self._normal)/denom
 
@@ -65,13 +77,52 @@ class Plane:
         return normalize(self._normal)
 
     def get_color(self,point): 
-        return np.array([0.,1.,1.]) 
+        x = np.dot(self.texture_x_axis,point)
+        y = np.dot(self.texture_y_axis,point)
+
+        u = x % 1
+        v = y % 1
+        
+        return self.texture.get_color(u,v)
+
+
 
 
 class Camera:
-    def __init__(self,origin,direction):
+    def __init__(self,origin,direction,up_dir,fov,ratio):
         self.origin = np.array(origin)
-        self.direction = np.array(direction)
+        self.direction = normalize(np.array(direction))
+        self.up_dir = normalize(np.array(up_dir))
+        self.fov = fov
+        self.ratio=ratio
+    
+    def ray_generator(self,resolution_x,resolution_y):
+        def gen():
+            fov_x = self.fov
+            fov_y = self.fov/self.ratio
+
+            base_dir = self.direction
+            y_dir = self.up_dir
+            x_dir = cross(base_dir,y_dir)
+
+            orig = self.origin
+
+            for i in range(resolution_x):
+                x = i-resolution_x/2
+                alpha_x = x*fov_x/resolution_x
+                dx = math.tan(alpha_x)
+                for j in range(resolution_y):
+                    y = j-resolution_y/2
+                    alpha_y = y*fov_y/resolution_y
+                    dy = math.tan(alpha_y)
+
+                    dv = y_dir*dy+x_dir*dx
+                    d = normalize(base_dir+dv)
+
+                    yield i,j,Ray(orig,d)
+
+        return gen
+
 
 class Light:
     def __init__(self,origin,color):
@@ -110,7 +161,7 @@ class Scene:
     def __init__(self):
         self.objects = []
         self.lights = []
-        self.camera = Camera([0.,0.,-1.],[0., 0., 0.])
+        self.camera = Camera([0.,0.,0.],[0., 0., -1.],[0.,1.,0.],math.pi/3,1)
         self.ambient = 0.
 
 
@@ -158,38 +209,35 @@ class Scene:
         W = w*antialias
         H = h*antialias
         r = float(W) / H
-        # Screen coordinates: x0, y0, x1, y1.
-        S = (-1., -1. / r + .25, 1., 1. / r + .25)
         color = np.zeros(3)
-        Q = np.array([0.,0.,0.])
         IMG = np.zeros((H,W,3))
          
+        rays = self.camera.ray_generator(W,H)
         # Loop through all pixels.
-        for i, x in enumerate(np.linspace(S[0], S[2], W)):
-            if i % 10 == 0:
-                print i / float(W) * 100, "%"
-            for j, y in enumerate(np.linspace(S[1], S[3], H)):
-                color = np.zeros(3)
-                reflection = 1.
-                Q[:2] = (x, y)
+        oldperc = -1
+        for i, j, ray in rays():
+            perc = int((i*H+j)*100/(W*H))
+            if perc % 5  == 0 and perc != oldperc:
+                print (perc, "%")
+                oldperc = perc
+            color = np.zeros(3)
+            reflection = 1.
 
-                O = self.camera.origin
-                D = normalize(Q - O)
 
-                for k in range(depth):
-                    ray = Ray(O, D)
-                    traced = self.trace_ray(ray)
-                    if traced == None:
-                        break
-                    c,P,N,obj = traced
-                    color += reflection*c
-                    reflection *= obj.material.reflection
-                    
-                    #reflected ray
-                    O = P+N*0.0001
-                    D = normalize(D - 2*np.dot(D,N)*N)
+            for k in range(depth):
+                traced = self.trace_ray(ray)
+                if traced == None:
+                    break
+                c,P,N,obj = traced
+                color += reflection*c
+                reflection *= obj.material.reflection
+                
+                #reflected ray
+                O = P+N*0.0001
+                D = normalize(ray.direction - 2*np.dot(ray.direction,N)*N)
+                ray = Ray(O, D)
 
-                IMG[H - j - 1, i, :] = np.clip(color, 0, 1)
+            IMG[H - j - 1, i, :] = np.clip(color, 0, 1)
          
         img = np.zeros((h,w,3))
         for i in range(h):
@@ -207,23 +255,23 @@ if __name__ == '__main__':
     m1 = Material(1.,1.,50,0.2) 
     m2 = Material(1.,1.,50,0.5) 
 
-    t1 = ImgTexture('earth.png',0.40)
+    t1 = ImgTexture('earth.png',.3)
     t2 = PatternTexture(lambda u,v:  np.array([0.,0.,1.]) if int(u*10)%2==int(v*10)%2 else np.array([1.,1.,0.]))
     t3 = PatternTexture(lambda u,v:np.array([1.,0.,0.]))
-    t4 = PatternTexture(lambda u,v:np.array([1.,1.,0.]))
+    t4 = PatternTexture(lambda u,v:  np.array([0.1,0.1,0.1]) if int(u*2)%2==int(v*2)%2 else np.array([0.3,0.,0.]))
     
     scene.objects = [
-            Sphere([.75, .1, 1.], .6, m1,t1),
-            Sphere([-.75, .1, 2.25], .6, m1,t2),
-            Sphere([-2.75, .1, 3.5], .6, m1,t3),
-            Plane([0., -.5, 0.], [0., 1., 0.],m2,t4),
+            Sphere([ 0., 0., -4], .5, m1,t1),
+            Sphere([-1., 0., -6], .5, m1,t2),
+            Sphere([ 1., 0., -2], .5, m1,t3),
+            Plane([0., -.5, 0.], [0., 1., 0.],m2,t4,[1.,0.,0.]),
     ]
     scene.lights = [
             Light([5., 5., -10.],[1.,1.,1.]),
             Light([-5., 5., 10.],[1.,1.,1.]),
     ]
-    scene.camera = Camera([0.,0.35,-1.],[0., 0., 0.])
+    scene.camera = Camera([0.,3.,2.],[0., -0.5, -1],[0.,1,-0.5],math.pi/4,4./3.)
     scene.ambient = 0.05
 
-    img = scene.draw(1920,1080,4,3)
+    img = scene.draw(800,600,4,1)
     plt.imsave('fig.png', img)
