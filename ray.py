@@ -1,3 +1,4 @@
+import sys
 import math
 import numpy as np
 import matplotlib.pyplot as plt
@@ -250,6 +251,11 @@ class Scene:
         return img
 
 if __name__ == '__main__':
+    w = int(sys.argv[1])
+    h = int(sys.argv[2])
+    aa = int(sys.argv[3])
+    ratio = float(w)/h
+    
     scene = Scene()
 
     m1 = Material(1.,1.,50,0.2) 
@@ -270,8 +276,9 @@ if __name__ == '__main__':
             Light([5., 5., -10.],[1.,1.,1.]),
             Light([-5., 5., 10.],[1.,1.,1.]),
     ]
-    scene.camera = Camera([0.,3.,2.],[0., -0.5, -1],[0.,1,-0.5],math.pi/4,4./3.)
+    scene.camera = Camera([0.,3.,2.],[0., -0.5, -1],[0.,1,-0.5],math.pi/4,ratio)
     scene.ambient = 0.05
 
-    img = scene.draw(800,600,4,1)
+    img = scene.draw(w,h,4,aa)
     plt.imsave('fig.png', img)
+
