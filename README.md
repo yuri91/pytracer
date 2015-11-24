@@ -11,5 +11,4 @@ simple python ray tracer
 
 ##TODO
 * refraction
-* transformation matrix
-* polygons
+* convex polyhedrons
