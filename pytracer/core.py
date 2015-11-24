@@ -1,90 +1,25 @@
-import sys
 import math
 import numpy as np
-import matplotlib.pyplot as plt
 
-
-def normalize(x):
-    x /= np.linalg.norm(x)
-    return x
-
-def cross(x,y):
-    i = x[1]*y[2]-x[2]*y[1]
-    j = x[2]*y[0]-x[0]*y[2]
-    k = x[0]*y[1]-x[1]*y[0]
-    
-    v = np.array([i,j,k])
-
-    return v
+from .math_utils import *
 
 class Ray:
     def __init__(self,origin,direction):
         self.origin = np.array(origin)
         self.direction = normalize(np.array(direction))
 
-class Sphere:
-    def __init__(self,center,radius,material,texture):
-        self.center = np.array(center)
-        self.radius = np.array(radius)
-        self.material = material
-        self.texture = texture
+class Light:
+    def __init__(self,origin,color):
+        self.origin = np.array(origin)
+        self.color = np.array(color)
 
-    def intersect(self,ray):
-        a = 1
-        CO = ray.origin - self.center
-        b = 2 * np.dot(ray.direction, CO)
-        c = np.dot(CO, CO) - self.radius * self.radius
-        disc = b * b - 4 * a * c
-        if disc > 0:
-            discSqrt = np.sqrt(disc)
-            t0 = (-b - discSqrt)/2.0
-            t1 = (-b + discSqrt)/2.0
-            t0, t1 = min(t0, t1), max(t0, t1)
-            if t1 >= 0:
-                return t1 if t0 < 0 else t0
-        return np.inf
 
-    def normal(self,point):
-        return normalize(point-self.center)
-
-    def get_color(self,point):
-        d = normalize(point - self.center)
-        u = 0.5 - math.atan2(d[0],d[2])/(math.pi*2) 
-        v = 0.5 - math.asin(d[1])/math.pi
-        
-        return self.texture.get_color(u,v)
-
-class Plane:
-    def __init__(self,point,normal,material,texture,texture_x_axis):
-        self.point = np.array(point)
-        self._normal = normalize(np.array(normal))
-        self.material = material
-        self.texture = texture
-        self.texture_x_axis = texture_x_axis
-        self.texture_y_axis = cross(self.texture_x_axis,self._normal)
-
-    def intersect(self,ray):
-        denom = np.dot(ray.direction,self._normal)
-        if denom == 0:
-            return np.inf
-
-        d = np.dot(self.point-ray.origin,self._normal)/denom
-
-        if d<0:
-            return np.inf
-        return d
-
-    def normal(self,point):
-        return normalize(self._normal)
-
-    def get_color(self,point): 
-        x = np.dot(self.texture_x_axis,point)
-        y = np.dot(self.texture_y_axis,point)
-
-        u = x % 1
-        v = y % 1
-        
-        return self.texture.get_color(u,v)
+class Material:
+    def __init__(self,diffuse_c,specular_c,specular_k,reflection):
+        self.diffuse_c = diffuse_c
+        self.specular_c = specular_c
+        self.specular_k = specular_k
+        self.reflection = reflection
 
 
 
@@ -123,39 +58,6 @@ class Camera:
                     yield i,j,Ray(orig,d)
 
         return gen
-
-
-class Light:
-    def __init__(self,origin,color):
-        self.origin = np.array(origin)
-        self.color = np.array(color)
-
-
-class Material:
-    def __init__(self,diffuse_c,specular_c,specular_k,reflection):
-        self.diffuse_c = diffuse_c
-        self.specular_c = specular_c
-        self.specular_k = specular_k
-        self.reflection = reflection
-
-class PatternTexture:
-    def __init__(self,uv_func):
-        self._uv_func = uv_func
-
-    def get_color(self,u,v):
-        return self._uv_func(u,v)
-
-class ImgTexture:
-    def __init__(self,f,offset=0):
-        self.img = plt.imread(f)
-        self.w = self.img.shape[0]
-        self.h = self.img.shape[1]
-        self.offset = offset
-
-    def get_color(self,u,v):
-        u += self.offset
-        u = u if u<1 else u-1 
-        return self.img[int(u*self.w),int(v*self.h)]
 
 
 class Scene:
@@ -249,36 +151,4 @@ class Scene:
                         color += IMG[i*antialias+k,j*antialias+l]
                 img[i,j] = color/(antialias**2)
         return img
-
-if __name__ == '__main__':
-    w = int(sys.argv[1])
-    h = int(sys.argv[2])
-    aa = int(sys.argv[3])
-    ratio = float(w)/h
-    
-    scene = Scene()
-
-    m1 = Material(1.,1.,50,0.2) 
-    m2 = Material(1.,1.,50,0.5) 
-
-    t1 = ImgTexture('earth.png',.3)
-    t2 = PatternTexture(lambda u,v:  np.array([0.,0.,1.]) if int(u*10)%2==int(v*10)%2 else np.array([1.,1.,0.]))
-    t3 = PatternTexture(lambda u,v:np.array([1.,0.,0.]))
-    t4 = PatternTexture(lambda u,v:  np.array([0.1,0.1,0.1]) if int(u*2)%2==int(v*2)%2 else np.array([0.3,0.,0.]))
-    
-    scene.objects = [
-            Sphere([ 0., 0., -4], .5, m1,t1),
-            Sphere([-1., 0., -6], .5, m1,t2),
-            Sphere([ 1., 0., -2], .5, m1,t3),
-            Plane([0., -.5, 0.], [0., 1., 0.],m2,t4,[1.,0.,0.]),
-    ]
-    scene.lights = [
-            Light([5., 5., -10.],[1.,1.,1.]),
-            Light([-5., 5., 10.],[1.,1.,1.]),
-    ]
-    scene.camera = Camera([0.,3.,2.],[0., -0.5, -1],[0.,1,-0.5],math.pi/4,ratio)
-    scene.ambient = 0.05
-
-    img = scene.draw(w,h,4,aa)
-    plt.imsave('fig.png', img)
 
