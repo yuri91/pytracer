@@ -9,6 +9,12 @@ simple python ray tracer
 * textures: image map, patterns
 
 
-##TODO
+## TODO
 * refraction
 * convex polyhedrons
+
+## Test
+
+```
+python scene1.py <width> <height> <antialiasing_level>
+```
